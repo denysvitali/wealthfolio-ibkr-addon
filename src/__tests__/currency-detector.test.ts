@@ -71,6 +71,34 @@ describe("Currency Detector", () => {
       expect(currencies).toEqual([]);
     });
 
+    it("should fall back to BaseCurrency rows when no Currency rows exist", () => {
+      const rows: CsvRowData[] = [
+        // No LevelOfDetail = "Currency" rows in this data
+        { LevelOfDetail: "BaseCurrency", CurrencyPrimary: "CHF", Symbol: "TSLA", lineNumber: "1" },
+        { LevelOfDetail: "BaseCurrency", CurrencyPrimary: "CHF", Symbol: "AAPL", lineNumber: "2" },
+        { LevelOfDetail: "BaseCurrency", CurrencyPrimary: "USD", Symbol: "MSFT", lineNumber: "3" },
+      ];
+
+      const currencies = detectCurrenciesFromIBKR(rows);
+
+      expect(currencies).toEqual(["CHF", "USD"]);
+    });
+
+    it("should prefer Currency rows over BaseCurrency when both exist", () => {
+      const rows: CsvRowData[] = [
+        // Currency summary rows (should be preferred)
+        { LevelOfDetail: "Currency", CurrencyPrimary: "GBP", lineNumber: "1" },
+        { LevelOfDetail: "Currency", CurrencyPrimary: "USD", lineNumber: "2" },
+        // BaseCurrency transaction rows (should be ignored)
+        { LevelOfDetail: "BaseCurrency", CurrencyPrimary: "CHF", Symbol: "TSLA", lineNumber: "3" },
+      ];
+
+      const currencies = detectCurrenciesFromIBKR(rows);
+
+      // Only GBP and USD from Currency rows, CHF from BaseCurrency is ignored
+      expect(currencies).toEqual(["GBP", "USD"]);
+    });
+
     it("should trim whitespace from currency codes", () => {
       const rows: CsvRowData[] = [
         { LevelOfDetail: "Currency", CurrencyPrimary: "  USD  ", lineNumber: "1" },
