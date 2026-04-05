@@ -16,6 +16,7 @@ interface IBKRTickerPreviewStepProps {
   resolutionProgress?: { current: number; total: number };
   transactionGroups: TransactionGroup[];
   failedResolutions?: Array<{ symbol: string; isin: string }>;
+  errors?: string[];
   onBack: () => void;
   onNext: () => void;
 }
@@ -25,6 +26,7 @@ export const IBKRTickerPreviewStep = ({
   resolutionProgress,
   transactionGroups,
   failedResolutions = [],
+  errors = [],
   onBack,
   onNext,
 }: IBKRTickerPreviewStepProps) => {
@@ -61,6 +63,15 @@ export const IBKRTickerPreviewStep = ({
           import.
         </p>
       </div>
+
+      {/* Errors */}
+      {!isResolving && errors.length > 0 && (
+        <ImportAlert variant="error" title="Import Issues">
+          {errors.map((err, i) => (
+            <div key={i} className="mb-1 last:mb-0">{err}</div>
+          ))}
+        </ImportAlert>
+      )}
 
       {/* Resolution Progress */}
       {isResolving && resolutionProgress && (

@@ -73,6 +73,7 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
   const [isResolving, setIsResolving] = useState(false);
   const [resolutionProgress, setResolutionProgress] = useState<ProgressInfo | undefined>();
   const [transactionGroups, setTransactionGroups] = useState<TransactionGroup[]>([]);
+  const [step3Errors, setStep3Errors] = useState<string[]>([]);
 
   // Step 4 state
   const [isImporting, setIsImporting] = useState(false);
@@ -174,6 +175,7 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
     setParsedData([]);
     setAccountPreviews([]);
     setTransactionGroups([]);
+    setStep3Errors([]);
     setImportResults([]);
     setLoadingMessage("");
     setResolutionProgress(undefined);
@@ -308,6 +310,7 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
   const handleProceedToStep3 = async () => {
     setIsResolving(true);
     setCurrentStep(3);
+    setStep3Errors([]);
 
     const errors: string[] = [];
     let updatedPreviews = accountPreviews;
@@ -368,6 +371,7 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
       debug.error(msg);
       errors.push(msg);
       // This is fatal - cannot continue without activities
+      setStep3Errors([msg]);
       setResolutionProgress(undefined);
       setIsResolving(false);
       return;
@@ -411,9 +415,10 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
     }
 
     // 5. Group by currency and create transaction groups
+    let groups: TransactionGroup[] = [];
     try {
       const groupedByCurrency = groupActivitiesByCurrency(dedupedActivities);
-      const groups = createTransactionGroups(updatedPreviews, groupedByCurrency);
+      groups = createTransactionGroups(updatedPreviews, groupedByCurrency);
       setTransactionGroups(groups);
     } catch (error) {
       const msg = `Failed to group transactions: ${getErrorMessage(error)}`;
@@ -421,11 +426,17 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
       errors.push(msg);
     }
 
+    // Show error if no transactions were generated
+    if (groups.length === 0 || groups.every(g => g.transactions.length === 0)) {
+      errors.push("No transactions were generated from the imported data. This may be due to all transactions being duplicates, or an issue with the file format.");
+    }
+
     // Log any accumulated warnings
     if (errors.length > 0) {
       debug.warn(`Import preparation completed with ${errors.length} warning(s):`, errors);
     }
 
+    setStep3Errors(errors);
     setResolutionProgress(undefined);
     setIsResolving(false);
   };
@@ -666,6 +677,7 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
             isResolving={isResolving}
             resolutionProgress={resolutionProgress}
             transactionGroups={transactionGroups}
+            errors={step3Errors}
             onBack={goToPreviousStep}
             onNext={handleStartImport}
           />
