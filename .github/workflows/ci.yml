@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -36,3 +39,21 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Create ZIP package
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p release
+          zip -r "release/wealthfolio-ibkr-addon-${GITHUB_SHA}.zip" manifest.json dist/ README.md LICENSE CHANGELOG.md
+
+      - name: Create GitHub Release (pre-release)
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.zip
+          name: "CI Build ${GITHUB_SHA}"
+          body: "Automated pre-release from push to `main` at commit `${GITHUB_SHA}`."
+          prerelease: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
