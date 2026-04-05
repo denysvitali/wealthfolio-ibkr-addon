@@ -48,12 +48,12 @@ jobs:
 
       - name: Create GitHub Release (pre-release)
         if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/*.zip
-          name: "CI Build ${GITHUB_SHA}"
-          body: "Automated pre-release from push to `main` at commit `${GITHUB_SHA}`."
-          prerelease: true
-          draft: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "ci-build-${GITHUB_SHA}" \
+            --target "${GITHUB_SHA}" \
+            --title "CI Build ${GITHUB_SHA}" \
+            --notes "Automated pre-release from push to main at commit ${GITHUB_SHA}." \
+            --prerelease \
+            release/*.zip
