@@ -14,6 +14,8 @@ import { resolveTickersFromIBKR } from "./ticker-resolution-service";
 import { convertToActivityImports } from "./activity-converter";
 import { splitFXConversions, SkippedFXConversion } from "./fx-transaction-splitter";
 import { filterDuplicateActivities } from "./activity-deduplicator";
+import { detectCorporateActions, computePositionAdjustments, applyAdjustmentsToActivities } from "./corporate-action-detector";
+import type { CorporateActionEvent } from "./corporate-action-detector";
 import type { CsvRowData } from "../presets/types";
 
 type AccountsAPI = HostAPI["accounts"];
@@ -30,6 +32,8 @@ export interface ProcessAndResolveResult {
   skippedCount: number;
   /** FX conversions that were skipped (missing accounts, etc.) */
   skippedFXConversions: SkippedFXConversion[];
+  /** Corporate actions detected in the data */
+  corporateActions: CorporateActionEvent[];
 }
 
 /**
@@ -82,6 +86,10 @@ export async function processAndResolveData(
   searchFn: MarketSearchFn,
   onProgress?: ProgressCallback
 ): Promise<ProcessAndResolveResult> {
+  // Detect corporate actions from raw data (before preprocessing filters them out)
+  const corporateActions = detectCorporateActions(parsedData);
+  const adjustments = computePositionAdjustments(corporateActions);
+
   // Preprocess the raw data
   const { processedData } = preprocessIBKRData(parsedData);
 
@@ -106,8 +114,11 @@ export async function processAndResolveData(
       .map((p) => [p.currency as string, p.existingAccount as Account])
   );
 
+  // Apply corporate action adjustments to activities (before FX splitting)
+  const adjustedActivities = applyAdjustmentsToActivities(conversionResult.activities, adjustments);
+
   // Split FX conversions
-  const fxSplitResult = splitFXConversions(conversionResult.activities, accountsByCurrency);
+  const fxSplitResult = splitFXConversions(adjustedActivities, accountsByCurrency);
 
   // Log skipped FX conversions as warnings
   if (fxSplitResult.skippedConversions.length > 0) {
@@ -122,6 +133,7 @@ export async function processAndResolveData(
     conversionErrors: conversionResult.errors,
     skippedCount: conversionResult.skipped,
     skippedFXConversions: fxSplitResult.skippedConversions,
+    corporateActions,
   };
 }
 

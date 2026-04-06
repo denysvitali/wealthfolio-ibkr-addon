@@ -4,6 +4,7 @@ import type { AddonContext, Account } from '@wealthfolio/addon-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import IBKRMultiImportPage from './pages/ibkr-multi-import-page';
 import IBKRFlexSettingsPage from './pages/ibkr-flex-settings-page';
+import IBKRReconcilePage from './pages/ibkr-reconcile-page';
 import { setHttpClient } from './lib/flex-query-fetcher';
 import {
   loadConfigsSafe,
@@ -107,6 +108,12 @@ export function enable(ctx: AddonContext) {
     })
   );
 
+  const LazyReconcilePage = React.lazy(() =>
+    Promise.resolve({
+      default: () => <IBKRReconcilePage ctx={ctx} />,
+    })
+  );
+
   // Register the import page route
   ctx.router.add({
     path: 'activities/import/ibkr-multi',
@@ -117,6 +124,12 @@ export function enable(ctx: AddonContext) {
   ctx.router.add({
     path: 'settings/ibkr-flex',
     component: LazySettingsPage,
+  });
+
+  // Register the reconciliation page route
+  ctx.router.add({
+    path: 'tools/ibkr-reconcile',
+    component: LazyReconcilePage,
   });
 
   // Add sidebar item for import
@@ -138,6 +151,16 @@ export function enable(ctx: AddonContext) {
     order: 151,
   });
   cleanupFunctions.push(() => settingsSidebarHandle.remove());
+
+  // Add sidebar item for reconciliation
+  const reconcileSidebarHandle = ctx.sidebar.addItem({
+    id: 'ibkr-reconcile',
+    label: 'IBKR Reconcile',
+    icon: 'Scale',
+    route: '/tools/ibkr-reconcile',
+    order: 152,
+  });
+  cleanupFunctions.push(() => reconcileSidebarHandle.remove());
 
   /**
    * Get or create accounts for each currency in an account group

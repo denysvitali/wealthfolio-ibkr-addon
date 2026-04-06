@@ -461,7 +461,26 @@ function classifyIBKRTransaction(row: IBKRTransactionRow): IBKRClassification {
     };
   }
 
-  // Rule 10: FX Translation adjustments (ADJ)
+  // Rule 10: Corporate Actions (splits, mergers, spin-offs, stock dividends)
+  // These are NOT imported as normal transactions. Instead, they are detected
+  // separately by corporate-action-detector.ts and used to retroactively adjust
+  // existing BUY/SELL activities' quantity and unitPrice.
+  if (
+    activityCode === "SOFF" ||
+    activityCode === "STKD" ||
+    activityCode === "ACQU" ||
+    activityCode === "CA" ||
+    /SPLIT\s+\d/i.test(description)
+  ) {
+    return {
+      classification: "CORPORATE_ACTION",
+      shouldImport: false,
+      warningMessages: [`Corporate action detected: ${activityCode} - ${description}`],
+      originalRow: row,
+    };
+  }
+
+  // Rule 11: FX Translation adjustments (ADJ)
   // These are accounting adjustments for FX translation P&L, not actual cash flows.
   // Skip to avoid affecting cash balance calculations.
   if (activityCode === "ADJ") {

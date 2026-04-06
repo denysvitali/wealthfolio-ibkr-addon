@@ -40,9 +40,15 @@
           "isDeclared": true,
           "isDetected": false,
           "detectedAt": null
+        },
+        {
+          "name": "getAll",
+          "isDeclared": true,
+          "isDetected": false,
+          "detectedAt": null
         }
       ],
-      "purpose": "Import transactions from IBKR CSV files or Flex Query API"
+      "purpose": "Import transactions and fetch activities for reconciliation"
     },
     {
       "category": "assets",

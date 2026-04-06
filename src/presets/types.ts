@@ -96,6 +96,7 @@ export interface IBKRClassification {
     | "FX_WITHDRAWAL"
     | "SECTION2_DUPLICATE"
     | "FX_ADJUSTMENT"
+    | "CORPORATE_ACTION"
     | "SUMMARY_ROW"
     | "EMPTY_ROW"
     | "UNKNOWN";

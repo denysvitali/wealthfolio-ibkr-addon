@@ -2,13 +2,8 @@ import { Button } from "./simple-button";
 import { Icons } from "./simple-icons";
 import { ProgressIndicator } from "./simple-progress";
 import { ImportAlert } from "./import-alert";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "./simple-accordion";
-import type { TransactionGroup } from "../types";
+import type { TransactionGroup, ActivityFingerprint } from "../types";
+import { ActivityHeatmap } from "./activity-heatmap";
 import { debug } from "../lib/debug-logger";
 
 interface IBKRTickerPreviewStepProps {
@@ -19,6 +14,10 @@ interface IBKRTickerPreviewStepProps {
   errors?: string[];
   onBack: () => void;
   onNext: () => void;
+  /** Existing activities per currency for heatmap overlap overlay */
+  existingActivitiesByCurrency?: Map<string, ActivityFingerprint[]>;
+  /** Duplicates removed per currency (from dedup step) */
+  duplicatesRemovedByCurrency?: Map<string, number>;
 }
 
 export const IBKRTickerPreviewStep = ({
@@ -29,11 +28,16 @@ export const IBKRTickerPreviewStep = ({
   errors = [],
   onBack,
   onNext,
+  existingActivitiesByCurrency,
+  duplicatesRemovedByCurrency,
 }: IBKRTickerPreviewStepProps) => {
   const totalTransactions = transactionGroups.reduce(
     (sum, group) => sum + group.transactions.length,
     0
   );
+  const totalDuplicatesRemoved = duplicatesRemovedByCurrency
+    ? Array.from(duplicatesRemovedByCurrency.values()).reduce((a, b) => a + b, 0)
+    : 0;
 
   const canProceed = !isResolving && totalTransactions > 0;
 
@@ -59,10 +63,23 @@ export const IBKRTickerPreviewStep = ({
       <div>
         <h2 className="mb-2 text-lg font-semibold">Transaction Preview</h2>
         <p className="text-muted-foreground text-sm">
-          Review transactions grouped by currency account. {totalTransactions} transactions ready to
-          import.
+          Review transactions grouped by currency account.
         </p>
       </div>
+
+      {/* Summary Pill */}
+      {!isResolving && totalTransactions > 0 && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/50 px-3 py-1 text-sm font-medium text-emerald-800 dark:text-emerald-200">
+            {totalTransactions} new transaction{totalTransactions !== 1 ? "s" : ""}
+          </span>
+          {totalDuplicatesRemoved > 0 && (
+            <span className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-sm font-medium text-muted-foreground">
+              {totalDuplicatesRemoved} duplicate{totalDuplicatesRemoved !== 1 ? "s" : ""} removed
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Errors */}
       {!isResolving && errors.length > 0 && (
@@ -98,11 +115,14 @@ export const IBKRTickerPreviewStep = ({
         </ImportAlert>
       )}
 
-      {/* Transaction Groups Accordion */}
+      {/* Transaction Groups with Heatmap */}
       {!isResolving && transactionGroups.length > 0 && (
-        <Accordion type="multiple" defaultValue={transactionGroups.map((_, i) => `group-${i}`)}>
+        <div className="space-y-4">
           {transactionGroups.map((group, index) => {
             const totalInGroup = group.transactions.length;
+            const dupsRemoved = duplicatesRemovedByCurrency?.get(group.currency) ?? 0;
+            const existingForCurrency = existingActivitiesByCurrency?.get(group.currency);
+
             const summaryText = [
               group.summary.trades > 0 && `${group.summary.trades} trades`,
               group.summary.dividends > 0 && `${group.summary.dividends} dividends`,
@@ -115,93 +135,78 @@ export const IBKRTickerPreviewStep = ({
               .join(", ");
 
             return (
-              <AccordionItem key={`group-${index}`} value={`group-${index}`}>
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex flex-1 items-center justify-between pr-4">
-                    <div className="flex items-center gap-3">
-                      <span className="rounded bg-primary/10 px-2.5 py-1 text-sm font-medium">
-                        {group.currency}
-                      </span>
-                      <span className="text-sm font-medium">{group.accountName}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-muted-foreground text-xs">{summaryText}</span>
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
-                        {totalInGroup}
-                      </span>
-                    </div>
+              <div key={index} className="rounded-lg border p-4 space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className="rounded bg-primary/10 px-2.5 py-1 text-sm font-medium">
+                      {group.currency}
+                    </span>
+                    <span className="text-sm font-medium">{group.accountName}</span>
                   </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-2 px-4 pb-4 pt-2">
-                    <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-                      {group.summary.trades > 0 && (
-                        <div className="rounded-lg border p-3">
-                          <p className="text-muted-foreground text-xs">Trades</p>
-                          <p className="text-lg font-semibold">{group.summary.trades}</p>
-                        </div>
-                      )}
-                      {group.summary.dividends > 0 && (
-                        <div className="rounded-lg border p-3">
-                          <p className="text-muted-foreground text-xs">Dividends</p>
-                          <p className="text-lg font-semibold">{group.summary.dividends}</p>
-                        </div>
-                      )}
-                      {group.summary.deposits > 0 && (
-                        <div className="rounded-lg border p-3">
-                          <p className="text-muted-foreground text-xs">Deposits</p>
-                          <p className="text-lg font-semibold">{group.summary.deposits}</p>
-                        </div>
-                      )}
-                      {group.summary.withdrawals > 0 && (
-                        <div className="rounded-lg border p-3">
-                          <p className="text-muted-foreground text-xs">Withdrawals</p>
-                          <p className="text-lg font-semibold">{group.summary.withdrawals}</p>
-                        </div>
-                      )}
-                      {group.summary.fees > 0 && (
-                        <div className="rounded-lg border p-3">
-                          <p className="text-muted-foreground text-xs">Fees</p>
-                          <p className="text-lg font-semibold">{group.summary.fees}</p>
-                        </div>
-                      )}
-                      {group.summary.other > 0 && (
-                        <div className="rounded-lg border p-3">
-                          <p className="text-muted-foreground text-xs">Other</p>
-                          <p className="text-lg font-semibold">{group.summary.other}</p>
-                        </div>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-muted-foreground text-xs">{summaryText}</span>
+                    <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                      {totalInGroup} new
+                    </span>
+                    {dupsRemoved > 0 && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                        {dupsRemoved} dups
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-                    {/* Sample transactions (first 5) */}
-                    <div className="mt-4">
-                      <p className="mb-2 text-xs font-medium">Sample Transactions:</p>
-                      <div className="space-y-1">
-                        {group.transactions.slice(0, 5).map((txn, txnIndex) => (
-                          <div
-                            key={txnIndex}
-                            className="bg-muted/30 flex items-center justify-between rounded p-2 text-xs"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono">{txn.symbol}</span>
-                              <span className="text-muted-foreground">{txn.activityType}</span>
-                            </div>
-                            <span className="text-muted-foreground">{String(txn.date || "")}</span>
-                          </div>
-                        ))}
-                        {group.transactions.length > 5 && (
-                          <p className="text-muted-foreground pt-1 text-xs">
-                            ... and {group.transactions.length - 5} more
-                          </p>
-                        )}
-                      </div>
+                {/* Heatmap */}
+                <ActivityHeatmap
+                  transactions={group.transactions}
+                  existingActivities={existingForCurrency}
+                  currency={group.currency}
+                />
+
+                {/* Summary cards */}
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+                  {group.summary.trades > 0 && (
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-muted-foreground text-xs">Trades</p>
+                      <p className="text-lg font-semibold">{group.summary.trades}</p>
                     </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                  )}
+                  {group.summary.dividends > 0 && (
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-muted-foreground text-xs">Dividends</p>
+                      <p className="text-lg font-semibold">{group.summary.dividends}</p>
+                    </div>
+                  )}
+                  {group.summary.deposits > 0 && (
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-muted-foreground text-xs">Deposits</p>
+                      <p className="text-lg font-semibold">{group.summary.deposits}</p>
+                    </div>
+                  )}
+                  {group.summary.withdrawals > 0 && (
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-muted-foreground text-xs">Withdrawals</p>
+                      <p className="text-lg font-semibold">{group.summary.withdrawals}</p>
+                    </div>
+                  )}
+                  {group.summary.fees > 0 && (
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-muted-foreground text-xs">Fees</p>
+                      <p className="text-lg font-semibold">{group.summary.fees}</p>
+                    </div>
+                  )}
+                  {group.summary.other > 0 && (
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-muted-foreground text-xs">Other</p>
+                      <p className="text-lg font-semibold">{group.summary.other}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             );
           })}
-        </Accordion>
+        </div>
       )}
 
       {/* Info Box */}

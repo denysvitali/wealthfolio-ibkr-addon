@@ -74,6 +74,8 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
   const [resolutionProgress, setResolutionProgress] = useState<ProgressInfo | undefined>();
   const [transactionGroups, setTransactionGroups] = useState<TransactionGroup[]>([]);
   const [step3Errors, setStep3Errors] = useState<string[]>([]);
+  const [existingActivitiesByCurrency, setExistingActivitiesByCurrency] = useState<Map<string, import("../types").ActivityFingerprint[]>>(new Map());
+  const [duplicatesRemovedByCurrency, setDuplicatesRemovedByCurrency] = useState<Map<string, number>>(new Map());
 
   // Step 4 state
   const [isImporting, setIsImporting] = useState(false);
@@ -350,6 +352,21 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
       if (!isMountedRef.current) return;
       activitiesWithFX = processResult.activities;
 
+      // Log corporate actions detected
+      if (processResult.corporateActions.length > 0) {
+        const caTypes = processResult.corporateActions.map(ca => `${ca.type}: ${ca.sourceSymbol}`).join(", ");
+        debug.log(`Detected ${processResult.corporateActions.length} corporate action(s): ${caTypes}`);
+        // Splits with adjustments are applied automatically — inform the user
+        const splits = processResult.corporateActions.filter(ca => ca.type === "SPLIT" || ca.type === "REVERSE_SPLIT");
+        if (splits.length > 0) {
+          errors.push(`${splits.length} stock split(s) detected and applied: ${splits.map(s => s.sourceSymbol).join(", ")}. Prior trade quantities and prices have been adjusted.`);
+        }
+        const others = processResult.corporateActions.filter(ca => ca.type !== "SPLIT" && ca.type !== "REVERSE_SPLIT");
+        if (others.length > 0) {
+          errors.push(`${others.length} corporate action(s) detected but not auto-adjusted: ${others.map(o => `${o.type} (${o.sourceSymbol})`).join(", ")}. Review may be needed.`);
+        }
+      }
+
       // Log conversion errors for user visibility
       if (processResult.conversionErrors.length > 0) {
         const errorSummary = `${processResult.conversionErrors.length} transaction(s) failed to convert`;
@@ -387,6 +404,21 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
       // Check if still mounted after async operation
       if (!isMountedRef.current) return;
       existingActivities = fetchResult.activities;
+
+      // Group existing activities by currency for heatmap overlay
+      const existingByCurrency = new Map<string, import("../types").ActivityFingerprint[]>();
+      for (const preview of updatedPreviews) {
+        if (preview.existingAccount) {
+          const accountActivities = existingActivities.filter(
+            a => a.currency === preview.currency
+          );
+          if (accountActivities.length > 0) {
+            existingByCurrency.set(preview.currency, accountActivities);
+          }
+        }
+      }
+      setExistingActivitiesByCurrency(existingByCurrency);
+
       if (!fetchResult.complete) {
         const msg = `Could not load activities from ${fetchResult.failedAccounts.length} account(s): ${fetchResult.failedAccounts.join(", ")}. Duplicates may occur for these accounts.`;
         debug.warn(msg);
@@ -403,10 +435,32 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
     // Check mounted state before final state updates
     if (!isMountedRef.current) return;
 
-    // 4. Deduplicate activities
+    // 4. Deduplicate activities and track per-currency counts
     let dedupedActivities = activitiesWithFX;
     try {
+      // Count pre-dedup activities by currency
+      const preCountByCurrency = new Map<string, number>();
+      for (const a of activitiesWithFX) {
+        const c = a.currency || "UNKNOWN";
+        preCountByCurrency.set(c, (preCountByCurrency.get(c) ?? 0) + 1);
+      }
+
       dedupedActivities = deduplicateActivities(activitiesWithFX, existingActivities);
+
+      // Count post-dedup and compute diff
+      const postCountByCurrency = new Map<string, number>();
+      for (const a of dedupedActivities) {
+        const c = a.currency || "UNKNOWN";
+        postCountByCurrency.set(c, (postCountByCurrency.get(c) ?? 0) + 1);
+      }
+
+      const dupsByCurrency = new Map<string, number>();
+      for (const [currency, preCount] of preCountByCurrency) {
+        const postCount = postCountByCurrency.get(currency) ?? 0;
+        const removed = preCount - postCount;
+        if (removed > 0) dupsByCurrency.set(currency, removed);
+      }
+      setDuplicatesRemovedByCurrency(dupsByCurrency);
     } catch (error) {
       const msg = `Deduplication failed, proceeding without: ${getErrorMessage(error)}`;
       debug.warn(msg);
@@ -680,6 +734,8 @@ const IBKRMultiImportPage: React.FC<IBKRMultiImportPageProps> = ({ ctx }) => {
             errors={step3Errors}
             onBack={goToPreviousStep}
             onNext={handleStartImport}
+            existingActivitiesByCurrency={existingActivitiesByCurrency}
+            duplicatesRemovedByCurrency={duplicatesRemovedByCurrency}
           />
         );
       case 4:
