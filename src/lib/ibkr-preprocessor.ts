@@ -123,9 +123,10 @@ function classifyIBKRTransaction(row: IBKRTransactionRow): IBKRClassification {
     // - TTAX: Transaction taxes (e.g., French FTT for HESAY)
     // - STAX: Sales Tax / VAT - only at BaseCurrency level
     // - OFEE: Other fees - but with special handling (see below)
+    // - ExchTrade: Stock trades - in single-section exports, trades only exist at BaseCurrency level
     // NOTE: DINT (Debit Interest) exists at BOTH BaseCurrency AND Currency levels.
     //       Skip BaseCurrency level (has base currency amounts) - use Currency level (has real currency amounts).
-    if (activityCode === "DIV" || activityCode === "TTAX" || activityCode === "STAX") {
+    if (activityCode === "DIV" || activityCode === "TTAX" || activityCode === "STAX" || transactionType === "ExchTrade") {
       // Don't return here - let it fall through to proper classification
     } else if (activityCode === "OFEE") {
       // OFEE (Other Fees) handling at BaseCurrency level:
