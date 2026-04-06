@@ -43,5 +43,19 @@ jobs:
       - name: Create ZIP package
         if: github.event_name == 'push'
         run: |
+          SHORT_SHA=${GITHUB_SHA::7}
           mkdir -p release
-          zip -r "release/wealthfolio-ibkr-addon-${GITHUB_SHA}.zip" manifest.json dist/ README.md LICENSE
+          zip -r "release/wealthfolio-ibkr-addon-${SHORT_SHA}.zip" manifest.json dist/ README.md LICENSE
+
+      - name: Create GitHub Release (pre-release)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          gh release create "ci-build-${SHORT_SHA}" \
+            --target "${GITHUB_SHA}" \
+            --title "CI Build ${SHORT_SHA}" \
+            --notes "Automated pre-release from push to main at commit ${SHORT_SHA}." \
+            --prerelease \
+            release/*.zip
